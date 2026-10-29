@@ -1,34 +1,70 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 
-type Status = 'Open' | 'In review' | 'Approved' | 'Rejected' | 'Completed';
-type Reason = 'Damaged' | 'Wrong Item' | 'Size Issue' | 'Not As Described' | 'Changed Mind' | 'Allergic Reaction';
-type Request = {
-  id: string; apiId?: string; customer: string; email: string; order: string; item: string; variant: string;
-  reason: Reason; status: Status; age: string; created: string; amount: string; resolution?: string;
-  note: string; avatar: string;
+type Status = 'OPEN' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED' | 'COMPLETED';
+type Reason = 'DAMAGED' | 'WRONG_ITEM' | 'SIZE_ISSUE' | 'NOT_AS_DESCRIBED' | 'CHANGED_MIND';
+type Resolution = 'REFUND' | 'REPLACEMENT' | 'STORE_CREDIT';
+
+interface NoteItem {
+  id: string;
+  body: string;
+  authorName: string;
+  createdAt: string;
+}
+
+interface ReturnRequestItem {
+  id: string;
+  reference: string;
+  customerName: string;
+  customerEmail: string;
+  orderNumber: string;
+  itemName: string;
+  itemVariant: string | null;
+  units: number;
+  reason: Reason;
+  status: Status;
+  resolution: Resolution | null;
+  refundAmount: string | number | null;
+  removedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  notes: NoteItem[];
+}
+
+const statusDisplay: Record<Status, { label: string; badgeClass: string; dotClass: string }> = {
+  OPEN: { label: 'Open', badgeClass: 'bg-[#f6ebd7] text-[#87500b] border-[#ebd4b0]', dotClass: 'bg-[#b8761a]' },
+  IN_REVIEW: { label: 'In review', badgeClass: 'bg-[#e5ecf1] text-[#344d62] border-[#ccd8e3]', dotClass: 'bg-[#4b6d8b]' },
+  APPROVED: { label: 'Approved', badgeClass: 'bg-[#e2f1e2] text-[#205b36] border-[#c4e3c4]', dotClass: 'bg-[#2e7d4c]' },
+  REJECTED: { label: 'Rejected', badgeClass: 'bg-[#f7dfd7] text-[#933d28] border-[#f0c3b5]', dotClass: 'bg-[#bf4f35]' },
+  COMPLETED: { label: 'Completed', badgeClass: 'bg-[#e3f0e3] text-[#205b36] border-[#c5e4c5]', dotClass: 'bg-[#2e7d4c]' }
 };
 
-const requests: Request[] = [
-  { id: 'RMA-10432', customer: 'Priya Shah', email: 'priya@render.ca', order: '#12983', item: 'Stoneware Mug', variant: 'Sand · Set of 2', reason: 'Damaged', status: 'Open', age: '2h', created: 'Apr 28, 2024 · 10:14 AM', amount: '$36.00', note: 'One of the mugs arrived with a chip on the rim. The packaging was intact otherwise.', avatar: 'PS' },
-  { id: 'RMA-10431', customer: 'Marcus Lee', email: 'marcus@hey.com', order: '#12977', item: 'Linen Throw', variant: 'Sage · 50” × 70”', reason: 'Changed Mind', status: 'In review', age: '5h', created: 'Apr 28, 2024 · 7:12 AM', amount: '$84.00', note: 'The color is a little different from what I expected in the room.', avatar: 'ML' },
-  { id: 'RMA-10430', customer: 'Elena Garcia', email: 'elena@gmail.com', order: '#12971', item: 'Canvas Pillow Cover', variant: 'Oat · 18” × 18”', reason: 'Wrong Item', status: 'Open', age: '1d', created: 'Apr 27, 2024 · 4:34 PM', amount: '$28.00', note: 'I ordered the natural linen cover but received the canvas version.', avatar: 'EG' },
-  { id: 'RMA-10429', customer: 'Daniel Kim', email: 'daniel@kimco.io', order: '#12968', item: 'Table Lamp', variant: 'Ash · US Plug', reason: 'Size Issue', status: 'In review', age: '1d', created: 'Apr 27, 2024 · 12:09 PM', amount: '$118.00', note: 'The base is larger than the listing made it seem, so it does not fit the console.', avatar: 'DK' },
-  { id: 'RMA-10428', customer: 'Taylor Brooks', email: 'taylor@larkmail.com', order: '#12960', item: 'Waffle Towel Set', variant: 'Ivory · Set of 2', reason: 'Damaged', status: 'Approved', age: '2d', created: 'Apr 26, 2024 · 3:22 PM', amount: '$42.00', resolution: 'Replacement', note: 'The stitching came loose after the first wash. Photos attached.', avatar: 'TB' },
-  { id: 'RMA-10427', customer: 'Aisha Khan', email: 'aisha@proton.me', order: '#12958', item: 'Ceramic Bowl', variant: 'Fog · Set of 4', reason: 'Not As Described', status: 'Open', age: '2d', created: 'Apr 26, 2024 · 1:45 PM', amount: '$64.00', note: 'The glaze is much darker than the product photos.', avatar: 'AK' },
-  { id: 'RMA-10426', customer: 'Noah Carter', email: 'noah@carta.co', order: '#12954', item: 'Planter', variant: 'Charcoal · Medium', reason: 'Changed Mind', status: 'Rejected', age: '3d', created: 'Apr 25, 2024 · 11:41 AM', amount: '$32.00', note: 'The return window had closed when this request was submitted.', avatar: 'NC' },
-  { id: 'RMA-10425', customer: 'Sophie Martin', email: 'sophie@duvet.co', order: '#12950', item: 'Linen Duvet Cover', variant: 'Natural · Queen', reason: 'Size Issue', status: 'Completed', age: '3d', created: 'Apr 25, 2024 · 9:10 AM', amount: '$126.00', resolution: 'Refund', note: 'The queen size is not a good fit for the mattress.', avatar: 'SM' },
-  { id: 'RMA-10424', customer: 'Lucas Nguyen', email: 'lucas@nguyen.co', order: '#12948', item: 'Bedside Table', variant: 'Oak', reason: 'Not As Described', status: 'In review', age: '4d', created: 'Apr 24, 2024 · 5:31 PM', amount: '$168.00', note: 'The wood tone is warmer than pictured and does not match the set.', avatar: 'LN' },
-  { id: 'RMA-10423', customer: 'Maya Patel', email: 'maya@patel.me', order: '#12945', item: 'Scented Candle', variant: 'Hinoki', reason: 'Allergic Reaction', status: 'Open', age: '4d', created: 'Apr 24, 2024 · 2:08 PM', amount: '$24.00', note: 'The scent caused a reaction, so I would like to return the unused candle.', avatar: 'MP' }
-];
+const reasonDisplay: Record<Reason, string> = {
+  DAMAGED: 'Damaged',
+  WRONG_ITEM: 'Wrong Item',
+  SIZE_ISSUE: 'Size Issue',
+  NOT_AS_DESCRIBED: 'Not As Described',
+  CHANGED_MIND: 'Changed Mind'
+};
 
-const statusTone: Record<Status, string> = { Open: 'bg-[#f6e8d0] text-[#8d530a]', 'In review': 'bg-[#e8edf0] text-[#465968]', Approved: 'bg-[#dfeede] text-[#236039]', Rejected: 'bg-[#f5dfd6] text-[#9d422a]', Completed: 'bg-[#e0eddf] text-[#236039]' };
+const resolutionDisplay: Record<Resolution, string> = {
+  REFUND: 'Refund',
+  REPLACEMENT: 'Replacement',
+  STORE_CREDIT: 'Store Credit'
+};
 
-function apiRequestToView(item: any): Request {
-  const statusLabels: Record<string, Status> = { OPEN: 'Open', IN_REVIEW: 'In review', APPROVED: 'Approved', REJECTED: 'Rejected', COMPLETED: 'Completed' };
-  const reasonLabels: Record<string, Reason> = { DAMAGED: 'Damaged', WRONG_ITEM: 'Wrong Item', SIZE_ISSUE: 'Size Issue', NOT_AS_DESCRIBED: 'Not As Described', CHANGED_MIND: 'Changed Mind', ALLERGIC_REACTION: 'Allergic Reaction' };
-  return { apiId: item.id, id: item.reference, customer: item.customerName, email: item.customerEmail, order: item.orderNumber, item: item.itemName, variant: item.itemVariant, reason: reasonLabels[item.reason] || 'Damaged', status: statusLabels[item.status] || 'Open', age: 'recently', created: new Date(item.createdAt).toLocaleString(), amount: item.refundAmount ? `$${item.refundAmount}` : '$36.00', resolution: item.resolution, note: item.notes?.[0]?.body || 'No notes have been added yet.', avatar: item.customerName.split(' ').map((part: string) => part[0]).join('').slice(0, 2).toUpperCase() };
+function formatRelativeTime(dateStr: string): string {
+  try {
+    const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
+    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  } catch {
+    return dateStr;
+  }
 }
 
 function Icon({ name, size = 18 }: { name: string; size?: number }) {
@@ -37,97 +73,1345 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
     search: <><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></>,
     box: <><path d="m21 8-9-5-9 5 9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8M12 13v8"/></>,
     chart: <><path d="M4 19V5M4 19h16"/><path d="m7 15 3-4 3 2 5-7"/></>,
-    gear: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-1.6 1.6-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5v.2H11v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1-1.6-1.6.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H5v-2.4h.3a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 1.6-1.6.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V5h2.4v.3a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1 1.6 1.6-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1h.2v2.4h-.2a1.7 1.7 0 0 0-1.5 1Z"/></>,
     bell: <><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 22h4"/></>,
     close: <><path d="m6 6 12 12M18 6 6 18"/></>,
     chevron: <path d="m9 18 6-6-6-6"/>,
     plus: <><path d="M12 5v14M5 12h14"/></>,
-    note: <><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></>
+    note: <><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></>,
+    check: <path d="M20 6 9 17l-5-5"/>,
+    alert: <><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></>,
+    lock: <><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>,
+    edit: <><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></>,
+    trash: <><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></>,
+    refresh: <><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></>
   };
-  return <svg {...props}>{paths[name]}</svg>;
+  return <svg {...props}>{paths[name] || null}</svg>;
 }
 
 export default function Home() {
+  const [requests, setRequests] = useState<ReturnRequestItem[]>([]);
+  const [selectedRequest, setSelectedRequest] = useState<ReturnRequestItem | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [serverError, setServerError] = useState<string | null>(null);
+
+  // Filters & Pagination
   const [query, setQuery] = useState('');
-  const [status, setStatus] = useState<'All statuses' | Status>('All statuses');
-  const [reason, setReason] = useState<'All reasons' | Reason>('All reasons');
-  const [selectedId, setSelectedId] = useState(requests[0].id);
-  const [mobileDetail, setMobileDetail] = useState(false);
-  const [toast, setToast] = useState('');
-  const [note, setNote] = useState('');
-  const [localRequests, setLocalRequests] = useState(requests);
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | Status>('ALL');
+  const [reasonFilter, setReasonFilter] = useState<'ALL' | Reason>('ALL');
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [page, setPage] = useState(1);
-  const [pages, setPages] = useState(1);
-  const [total, setTotal] = useState(requests.length);
-  const [sort, setSort] = useState<'newest' | 'oldest'>('newest');
-  const [resolution, setResolution] = useState('REPLACEMENT');
-  const [refundAmount, setRefundAmount] = useState('');
-  const [showCreate, setShowCreate] = useState(false);
-  const [newRequest, setNewRequest] = useState({ customerName: '', customerEmail: '', orderNumber: '', itemName: '', itemVariant: '', reason: 'Damaged' });
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
 
+  // Detail panel mobile visibility
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+
+  // Note entry
+  const [newNote, setNewNote] = useState('');
+  const [isAddingNote, setIsAddingNote] = useState(false);
+
+  // Approval modal / state
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
+  const [approvalResolution, setApprovalResolution] = useState<Resolution>('REFUND');
+  const [approvalRefundAmount, setApprovalRefundAmount] = useState('');
+  const [isSubmittingApproval, setIsSubmittingApproval] = useState(false);
+
+  // Create Request Modal
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    customerName: '',
+    customerEmail: '',
+    orderNumber: '',
+    itemName: '',
+    itemVariant: '',
+    units: 1,
+    reason: 'DAMAGED' as Reason,
+    initialNote: ''
+  });
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+
+  // Edit Request Details Modal
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({
+    customerName: '',
+    customerEmail: '',
+    orderNumber: '',
+    itemName: '',
+    itemVariant: '',
+    units: 1,
+    reason: 'DAMAGED' as Reason
+  });
+  const [editError, setEditError] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+
+  // Toast notification
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToast({ message, type });
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 5000);
+  }, []);
+
+  // Search input debounce (350ms delay) to prevent firing on every keystroke
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      const params = new URLSearchParams({ page: String(page), pageSize: '10', sort });
-      if (query) params.set('q', query);
-      if (status !== 'All statuses') params.set('status', status);
-      if (reason !== 'All reasons') params.set('reason', reason);
-      fetch(`/api/requests?${params.toString()}`).then((response) => response.ok ? response.json() : Promise.reject()).then((data) => { setLocalRequests(data.items.map(apiRequestToView)); setPages(data.pages); setTotal(data.total); }).catch(() => undefined);
+    const timer = setTimeout(() => {
+      setDebouncedQuery(query.trim());
+      setPage(1);
     }, 350);
-    return () => window.clearTimeout(timer);
-  }, [query, status, reason, page, sort]);
+    return () => clearTimeout(timer);
+  }, [query]);
 
-  const filtered = useMemo(() => localRequests.filter((r) => {
-    const q = query.toLowerCase();
-    const matchesQ = !q || [r.id, r.customer, r.email, r.order, r.item].some((v) => v.toLowerCase().includes(q));
-    return matchesQ && (status === 'All statuses' || r.status === status) && (reason === 'All reasons' || r.reason === reason);
-  }), [query, status, reason, localRequests]);
-  const selected = localRequests.find((r) => r.id === selectedId) ?? localRequests[0];
+  // Fetch requests from Server API
+  const fetchRequests = useCallback(async () => {
+    setLoading(true);
+    setServerError(null);
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: '10',
+        sort: sortOrder
+      });
+
+      if (debouncedQuery) params.set('q', debouncedQuery);
+      if (statusFilter !== 'ALL') params.set('status', statusFilter);
+      if (reasonFilter !== 'ALL') params.set('reason', reasonFilter);
+
+      const response = await fetch(`/api/requests?${params.toString()}`);
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Server responded with HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      setRequests(data.items || []);
+      setTotalPages(data.totalPages || 1);
+      setTotalCount(data.total || 0);
+
+      // Keep selected request in sync or select first
+      if (data.items && data.items.length > 0) {
+        setSelectedRequest((current) => {
+          if (!current) return data.items[0];
+          const found = data.items.find((item: ReturnRequestItem) => item.id === current.id);
+          return found || data.items[0];
+        });
+      } else {
+        setSelectedRequest(null);
+      }
+    } catch (err: any) {
+      console.error('Fetch requests error:', err);
+      setServerError(err.message || 'Failed to load requests from server.');
+    } finally {
+      setLoading(false);
+    }
+  }, [page, sortOrder, debouncedQuery, statusFilter, reasonFilter]);
 
   useEffect(() => {
-    if (selected) { setResolution(selected.resolution || 'REPLACEMENT'); setRefundAmount(selected.amount.replace(/[^0-9.]/g, '') || ''); }
-  }, [selectedId, selected]);
+    fetchRequests();
+  }, [fetchRequests]);
 
-  function selectRequest(id: string) { setSelectedId(id); setMobileDetail(true); }
-  function moveStatus(next: Status) {
-    if (!selected) return;
-    const legal: Record<Status, Status[]> = { Open: ['In review'], 'In review': ['Approved', 'Rejected'], Approved: ['Completed'], Rejected: [], Completed: [] };
-    if (!legal[selected.status].includes(next)) { setToast(`That transition is not allowed from ${selected.status}.`); return; }
-    if (next === 'Approved' && !resolution) { setToast('Choose a resolution before approving this request.'); return; }
-    const statusValues: Record<Status, string> = { Open: 'OPEN', 'In review': 'IN_REVIEW', Approved: 'APPROVED', Rejected: 'REJECTED', Completed: 'COMPLETED' };
-    if (selected.apiId) fetch(`/api/requests/${selected.apiId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: statusValues[next], resolution: next === 'Approved' ? resolution : undefined, refundAmount: next === 'Approved' && resolution === 'REFUND' ? Number(refundAmount) : undefined }) }).then(async (response) => { if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error(error.error || 'The server refused that transition.'); } setLocalRequests((items) => items.map((item) => item.id === selected.id ? { ...item, status: next, resolution: next === 'Approved' ? resolution : item.resolution, amount: resolution === 'REFUND' ? `$${refundAmount}` : item.amount } : item)); setToast(`Request moved to ${next}.`); }).catch((error) => setToast(error.message));
-    else { setLocalRequests((items) => items.map((item) => item.id === selected.id ? { ...item, status: next } : item)); setToast(`Request moved to ${next}.`); }
-  }
-  function addNote() { if (!note.trim()) return; const body = note.trim(); if (selected?.apiId) fetch(`/api/requests/${selected.apiId}/notes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }) }).then((response) => { if (!response.ok) throw new Error(); setLocalRequests((items) => items.map((item) => item.id === selected.id ? { ...item, note: body } : item)); setNote(''); setToast('Note added to the request timeline.'); }).catch(() => setToast('The server could not add that note.')); else { setNote(''); setToast('Note added to the request timeline.'); } }
-  function removeRequest() { if (!selected?.apiId) return; fetch(`/api/requests/${selected.apiId}`, { method: 'DELETE' }).then((response) => { if (!response.ok) throw new Error(); setLocalRequests((items) => items.filter((item) => item.id !== selected.id)); setMobileDetail(false); setToast('Request removed from the desk.'); }).catch(() => setToast('Only Open or Rejected requests can be removed.')); }
-  function createRequest(event: React.FormEvent) { event.preventDefault(); fetch('/api/requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newRequest) }).then(async (response) => { const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Could not create request.'); setLocalRequests((items) => [apiRequestToView(data), ...items]); setTotal((count) => count + 1); setShowCreate(false); setNewRequest({ customerName: '', customerEmail: '', orderNumber: '', itemName: '', itemVariant: '', reason: 'Damaged' }); setPage(1); setToast('Return request created.'); }).catch((error) => setToast(error.message)); }
+  // Fetch full details of single request
+  const fetchSingleRequest = async (id: string) => {
+    try {
+      const response = await fetch(`/api/requests/${id}`);
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to fetch request details.');
+      }
+      const data = await response.json();
+      setSelectedRequest(data);
+      // update in list if present
+      setRequests((prev) => prev.map((item) => (item.id === data.id ? data : item)));
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
 
-  return <main className="min-h-screen bg-[var(--paper)]">
-    <aside className="fixed inset-y-0 left-0 hidden w-[236px] border-r hairline bg-[var(--surface)] lg:flex lg:flex-col">
-      <div className="px-6 pt-7"><div className="serif text-[29px] leading-none tracking-[-.04em]">ReturnDesk</div><div className="mt-2 text-[10px] uppercase tracking-[.22em] text-[var(--muted)]">Returns operations</div></div>
-      <nav className="mt-14 px-3">
-        <div className="flex w-full items-center gap-3 rounded-[4px] bg-[#f4eadb] px-3 py-2.5 text-[13px] font-semibold text-[#73430b]"><Icon name="box" size={18}/><span className="flex-1">Requests</span><span className="rounded-full bg-[#ead7b9] px-2 py-0.5 text-[11px]">12</span></div>
-      </nav>
-      <div className="mt-auto border-t hairline p-4"><div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-[4px] bg-[#e7e3d7] font-serif text-lg">B</div><div className="min-w-0"><div className="truncate text-[12px] font-bold">Brooklane Goods</div><div className="truncate text-[11px] text-[var(--muted)]">Small home. A calmer life.</div></div><Icon name="chevron" size={15}/></div></div>
-    </aside>
+  // Add Note
+  const handleAddNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRequest || !newNote.trim()) return;
 
-    <section className="lg:ml-[236px]">
-      <header className="flex h-[72px] items-center justify-between border-b hairline bg-[var(--surface)] px-5 sm:px-8"><div className="serif text-[25px] lg:hidden">ReturnDesk</div><div className="hidden sm:block" aria-hidden="true"/><div className="flex items-center gap-4"><div className="relative"><Icon name="bell" size={19}/><span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-[#c9851c]"/></div><div className="hidden h-8 w-8 items-center justify-center rounded-full bg-[#e5e1d7] text-[12px] font-semibold sm:flex">JS</div><div className="hidden sm:block"><div className="text-[12px] font-semibold">Jordan Singh</div><div className="text-[11px] text-[var(--muted)]">Support Agent</div></div><span className="text-[14px]">⌄</span></div></header>
+    setIsAddingNote(true);
+    try {
+      const response = await fetch(`/api/requests/${selectedRequest.id}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: newNote.trim(), authorName: 'Jordan Singh' })
+      });
 
-      <div className="flex min-h-[calc(100vh-72px)]">
-        <div className="min-w-0 flex-1 px-5 py-8 sm:px-8">
-          <div className="mb-7 flex items-end justify-between gap-4"><div><h1 className="serif text-[48px] leading-[.95] tracking-[-.045em]">Requests</h1><p className="mt-3 text-[14px] text-[var(--muted)]">Review and process customer returns. <span className="text-[#45443f]">{total} requests</span> across all channels.</p></div><button onClick={() => setShowCreate(true)} className="focus-ring hidden h-10 items-center gap-2 rounded-[4px] bg-[var(--ink)] px-4 text-[12px] font-semibold text-white sm:flex"><Icon name="plus" size={15}/> New request</button></div>
-          <div className="mb-5 flex flex-col gap-2 md:flex-row"><div className="relative min-w-0 flex-1"><span className="pointer-events-none absolute left-3 top-3.5"><Icon name="search" size={17}/></span><input value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} className="focus-ring h-10 w-full rounded-[4px] border hairline bg-[var(--surface)] pl-10 pr-3 text-[13px] outline-none placeholder:text-[#99978f]" placeholder="Search by reference, customer, or item..."/></div><select value={status} onChange={(e) => { setStatus(e.target.value as typeof status); setPage(1); }} className="focus-ring h-10 rounded-[4px] border hairline bg-[var(--surface)] px-3 text-[12px] outline-none"><option>All statuses</option><option>Open</option><option>In review</option><option>Approved</option><option>Rejected</option><option>Completed</option></select><select value={reason} onChange={(e) => { setReason(e.target.value as typeof reason); setPage(1); }} className="focus-ring h-10 rounded-[4px] border hairline bg-[var(--surface)] px-3 text-[12px] outline-none"><option>All reasons</option><option>Damaged</option><option>Wrong Item</option><option>Size Issue</option><option>Not As Described</option><option>Changed Mind</option><option>Allergic Reaction</option></select><select value={sort} onChange={(e) => { setSort(e.target.value as typeof sort); setPage(1); }} className="focus-ring h-10 rounded-[4px] border hairline bg-[var(--surface)] px-3 text-[12px] outline-none"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></div>
-          <div className="overflow-x-auto rounded-[5px] border hairline bg-[var(--surface)]"><div className="min-w-[760px]"><div className="grid grid-cols-[28px_1.15fr_1.5fr_1.55fr_1.2fr_.9fr_44px] items-center border-b hairline px-3 py-3 text-[10px] font-bold uppercase tracking-[.13em] text-[var(--muted)] sm:px-4"><span className="h-4 w-4 rounded-[3px] border hairline"/><span>Reference</span><span>Customer</span><span>Item</span><span>Reason</span><span>Status</span><span/></div>{filtered.length === 0 ? <div className="px-6 py-16 text-center"><div className="serif text-[28px]">No requests found</div><p className="mt-2 text-[13px] text-[var(--muted)]">Try a different search or remove a filter.</p></div> : filtered.map((r) => <button key={r.id} onClick={() => selectRequest(r.id)} className={`focus-ring grid w-full grid-cols-[28px_1.15fr_1.5fr_1.55fr_1.2fr_.9fr_44px] items-center border-b hairline px-3 py-3.5 text-left transition-colors last:border-0 hover:bg-[#f5f1e9] sm:px-4 ${selected?.id === r.id ? 'bg-[#f7f0e4]' : ''}`}><span className="h-4 w-4 rounded-[3px] border hairline"/><span className="mono text-[11px] font-medium">{r.id}</span><span className="min-w-0"><span className="block truncate text-[12px] font-semibold">{r.customer}</span><span className="block truncate text-[11px] text-[var(--muted)]">{r.order} · {r.email}</span></span><span className="min-w-0"><span className="block truncate text-[12px] font-medium">{r.item}</span><span className="block truncate text-[11px] text-[var(--muted)]">{r.variant}</span></span><span className="truncate text-[12px] text-[#56554e]">{r.reason}</span><span><span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${statusTone[r.status]}`}>{r.status}</span></span><span className="text-right"><Icon name="chevron" size={16}/></span></button>)}</div></div>
-          <div className="mt-4 flex items-center justify-between text-[11px] text-[var(--muted)]"><span>Showing {filtered.length} of {total} requests</span><span className="flex items-center gap-3"><button disabled={page <= 1} onClick={() => setPage((value) => value - 1)} className="disabled:opacity-30">← Previous</button><span>Page {page} of {pages}</span><button disabled={page >= pages} onClick={() => setPage((value) => value + 1)} className="disabled:opacity-30">Next →</button></span></div>
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'The server could not record the note.');
+      }
+
+      setNewNote('');
+      showToast('Note added to timeline.', 'success');
+      // refresh request to get new notes in order
+      await fetchSingleRequest(selectedRequest.id);
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsAddingNote(false);
+    }
+  };
+
+  // Status transitions
+  const handleTransition = async (nextStatus: Status) => {
+    if (!selectedRequest) return;
+
+    if (nextStatus === 'APPROVED') {
+      setApprovalResolution(selectedRequest.resolution || 'REFUND');
+      setApprovalRefundAmount(selectedRequest.refundAmount ? String(selectedRequest.refundAmount) : '');
+      setShowApprovalModal(true);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/requests/${selectedRequest.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Status transition refused by server.');
+      }
+
+      showToast(`Request transitioned to ${statusDisplay[nextStatus].label}.`, 'success');
+      await fetchRequests();
+      await fetchSingleRequest(selectedRequest.id);
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  // Approve request with resolution
+  const handleConfirmApproval = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRequest) return;
+
+    setIsSubmittingApproval(true);
+    try {
+      const payload: any = {
+        status: 'APPROVED',
+        resolution: approvalResolution
+      };
+
+      if (approvalResolution === 'REFUND') {
+        const amt = parseFloat(approvalRefundAmount);
+        if (isNaN(amt) || amt <= 0) {
+          throw new Error('Please enter a valid refund amount greater than 0.');
+        }
+        payload.refundAmount = amt;
+      } else {
+        payload.refundAmount = null;
+      }
+
+      const response = await fetch(`/api/requests/${selectedRequest.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Approval refused by server.');
+      }
+
+      setShowApprovalModal(false);
+      showToast('Request approved with resolution.', 'success');
+      await fetchRequests();
+      await fetchSingleRequest(selectedRequest.id);
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsSubmittingApproval(false);
+    }
+  };
+
+  // Remove request from desk (soft delete)
+  const handleRemoveRequest = async () => {
+    if (!selectedRequest) return;
+    const confirmRemove = window.confirm(`Remove request ${selectedRequest.reference} from the desk? The record will remain archived in the database.`);
+    if (!confirmRemove) return;
+
+    try {
+      const response = await fetch(`/api/requests/${selectedRequest.id}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Server refused request removal.');
+      }
+
+      showToast(`Request ${selectedRequest.reference} removed from desk.`, 'info');
+      setMobileDetailOpen(false);
+      await fetchRequests();
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  // Create new request
+  const handleCreateRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreateError(null);
+    setIsCreating(true);
+
+    try {
+      const response = await fetch('/api/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createForm)
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Server could not create the return request.');
+      }
+
+      setShowCreateModal(false);
+      setCreateForm({
+        customerName: '',
+        customerEmail: '',
+        orderNumber: '',
+        itemName: '',
+        itemVariant: '',
+        units: 1,
+        reason: 'DAMAGED',
+        initialNote: ''
+      });
+      showToast(`Request ${data.reference} created successfully.`, 'success');
+      setPage(1);
+      await fetchRequests();
+      setSelectedRequest(data);
+    } catch (err: any) {
+      setCreateError(err.message);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  // Open edit modal with current request data
+  const openEditModal = () => {
+    if (!selectedRequest) return;
+    setEditForm({
+      customerName: selectedRequest.customerName,
+      customerEmail: selectedRequest.customerEmail,
+      orderNumber: selectedRequest.orderNumber,
+      itemName: selectedRequest.itemName,
+      itemVariant: selectedRequest.itemVariant || '',
+      units: selectedRequest.units || 1,
+      reason: selectedRequest.reason
+    });
+    setEditError(null);
+    setShowEditModal(true);
+  };
+
+  // Save edited request details
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRequest) return;
+    setEditError(null);
+    setIsEditing(true);
+
+    try {
+      const response = await fetch(`/api/requests/${selectedRequest.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editForm)
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Server refused updating request details.');
+      }
+
+      setShowEditModal(false);
+      showToast('Request details updated.', 'success');
+      await fetchRequests();
+      await fetchSingleRequest(selectedRequest.id);
+    } catch (err: any) {
+      setEditError(err.message);
+    } finally {
+      setIsEditing(false);
+    }
+  };
+
+  const isDecided = selectedRequest ? ['APPROVED', 'REJECTED', 'COMPLETED'].includes(selectedRequest.status) : false;
+
+  return (
+    <main className="min-h-screen bg-[var(--paper)] text-[var(--ink)]">
+      {/* Toast Notification */}
+      {toast && (
+        <div
+          role="alert"
+          onClick={() => setToast(null)}
+          className={`fixed bottom-6 left-1/2 z-50 flex max-w-md -translate-x-1/2 cursor-pointer items-center gap-3 rounded-md px-4 py-3 text-[13px] font-medium shadow-2xl transition-all ${
+            toast.type === 'error'
+              ? 'bg-[#8f2b1d] text-white border border-[#b84332]'
+              : toast.type === 'success'
+              ? 'bg-[#1b4e2d] text-white border border-[#2d7748]'
+              : 'bg-[#1c1c1b] text-white'
+          }`}
+        >
+          <Icon name={toast.type === 'error' ? 'alert' : toast.type === 'success' ? 'check' : 'note'} size={18} />
+          <span className="flex-1">{toast.message}</span>
+          <button aria-label="Dismiss toast" className="opacity-75 hover:opacity-100">
+            <Icon name="close" size={15} />
+          </button>
+        </div>
+      )}
+
+      {/* Desktop Sidebar Navigation */}
+      <aside className="fixed inset-y-0 left-0 hidden w-[240px] flex-col border-r hairline bg-[var(--surface)] lg:flex">
+        <div className="px-6 pt-7">
+          <div className="serif text-[30px] font-normal leading-none tracking-[-.04em]">ReturnDesk</div>
+          <div className="mt-2 text-[10px] font-semibold uppercase tracking-[.22em] text-[var(--muted)]">Returns Operations</div>
         </div>
 
-        {selected && <aside className={`detail-panel w-[420px] shrink-0 border-l hairline bg-[var(--surface)] ${mobileDetail ? 'block' : 'hidden lg:block'}`}><div className="flex h-[76px] items-start justify-between border-b hairline px-5 py-5"><div><div className="mono text-[21px] font-medium">{selected.id}</div><div className="mt-1 text-[11px] text-[var(--muted)]">{selected.created} · {selected.age} ago</div></div><button onClick={() => setMobileDetail(false)} className="focus-ring rounded p-1"><Icon name="close" size={19}/></button></div><div className="scrollbar h-[calc(100vh-148px)] overflow-y-auto px-5 py-5"><div className="grid grid-cols-2 gap-5 border-b hairline pb-5"><div><div className="mb-1 text-[10px] uppercase tracking-[.13em] text-[var(--muted)]">Customer</div><div className="text-[14px] font-bold">{selected.customer}</div><div className="mt-1 text-[11px] text-[var(--muted)]">{selected.email}</div><div className="mt-1 text-[11px] text-[var(--muted)]">Toronto, ON, Canada</div></div><div className="border-l hairline pl-5"><div className="mb-1 text-[10px] uppercase tracking-[.13em] text-[var(--muted)]">Order</div><div className="text-[14px] font-bold">{selected.order}</div><div className="mt-1 text-[11px] text-[var(--muted)]">Apr 20, 2024 · Online Store</div></div></div><div className="border-b hairline py-5"><div className="mb-3 text-[10px] uppercase tracking-[.13em] text-[var(--muted)]">Item</div><div className="flex items-center gap-3"><div className="flex h-14 w-14 items-center justify-center rounded-[5px] bg-[#ece7dc] text-[26px]">☕</div><div><div className="text-[13px] font-bold">{selected.item}</div><div className="mt-1 text-[11px] text-[var(--muted)]">{selected.variant}</div><div className="mt-1 text-[11px]">{selected.amount} · Qty 1</div></div></div></div><div className="border-b hairline py-5"><div className="mb-1 text-[10px] uppercase tracking-[.13em] text-[var(--muted)]">Reason</div><div className="text-[14px] font-bold">{selected.reason === 'Damaged' ? 'Arrived damaged' : selected.reason}</div><p className="mt-2 text-[12px] italic leading-relaxed text-[#66645c]">“{selected.note}”</p></div><div className="border-b hairline py-5"><div className="mb-5 flex items-center justify-between text-[10px] uppercase tracking-[.13em] text-[var(--muted)]"><span>Request lifecycle</span><span className={`rounded-full px-2 py-1 normal-case tracking-normal ${statusTone[selected.status]}`}>{selected.status}</span></div><div className="relative flex justify-between"><div className="absolute left-2 right-2 top-2 h-px bg-[#d6d4cd]"/>{['Open','In review','Decision','Completed'].map((step) => <span key={step} className="relative z-10 rounded-full bg-[var(--amber)] px-2 py-1 text-[10px] text-white">{step}</span>)}</div></div><div className="py-5"><div className="mb-4 flex gap-5 border-b hairline"><span className="border-b-2 border-[var(--amber)] pb-2 text-[12px] font-bold">Notes</span><span className="pb-2 text-[12px] text-[var(--muted)]">Return details</span></div><div className="space-y-4"><div className="flex gap-3"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e7e2d8] text-[10px] font-bold">JS</div><div><div className="text-[11px] font-semibold">Jordan Singh <span className="ml-1 font-normal text-[var(--muted)]">2 hours ago</span></div><p className="mt-1 text-[12px] leading-relaxed text-[#66645c]">Customer provided photos. Damage confirmed. Reviewing request now.</p></div></div><div className="flex gap-3"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#eeeae2]"><Icon name="note" size={14}/></div><div><div className="text-[11px] font-semibold">Return request created <span className="ml-1 font-normal text-[var(--muted)]">{selected.age} ago</span></div><p className="mt-1 text-[12px] leading-relaxed text-[#66645c]">Customer submitted a return request for 1 item.</p></div></div></div><div className="mt-5 flex gap-2"><input value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addNote()} className="focus-ring min-w-0 flex-1 rounded-[4px] border hairline bg-transparent px-3 py-2 text-[12px] outline-none" placeholder="Add a note..."/><button onClick={addNote} className="rounded-[4px] border hairline px-3 text-[11px] font-semibold">Add</button></div></div>{selected.status !== 'Rejected' && selected.status !== 'Completed' && <div className="mt-6 flex gap-2 border-t hairline pt-4"><button onClick={() => moveStatus(selected.status === 'Open' ? 'In review' : selected.status === 'In review' ? 'Approved' : 'Completed')} className="focus-ring flex h-11 flex-1 items-center justify-center rounded-[4px] bg-[#d98a18] text-[12px] font-bold text-white">{selected.status === 'Open' ? 'Start review' : selected.status === 'In review' ? 'Approve return' : 'Complete return'}</button></div>}{['Rejected','Completed'].includes(selected.status) && <div className="mt-6 rounded-[5px] border hairline bg-[#f3f1eb] p-4"><div className="text-[11px] font-semibold">{selected.status === 'Completed' ? 'This request is complete' : 'This request is closed'}</div><p className="mt-1 text-[11px] leading-relaxed text-[var(--muted)]">The customer and item details are locked. Notes can still be added if context is needed.</p></div>}</div></aside>}
-      </div>
-    </section>
-    {toast && <div className="fixed bottom-5 left-1/2 z-30 -translate-x-1/2 rounded-[4px] bg-[#1d1d1b] px-4 py-3 text-[12px] font-medium text-white shadow-xl" onClick={() => setToast('')}>{toast}</div>}
-    {selected && selected.status === 'In review' && <div className="mt-4 mx-auto flex w-fit items-center gap-3 rounded-[5px] border hairline bg-[var(--surface)] px-3 py-2 shadow-xl"><label className="text-[11px] font-semibold text-[var(--muted)]">Resolution</label><select value={resolution} onChange={(event) => setResolution(event.target.value)} className="h-9 rounded-[4px] border hairline bg-transparent px-2 text-[11px] outline-none"><option value="REFUND">Refund</option><option value="REPLACEMENT">Replacement</option><option value="STORE_CREDIT">Store credit</option></select>{resolution === 'REFUND' && <input value={refundAmount} onChange={(event) => setRefundAmount(event.target.value)} type="number" min="0.01" step="0.01" className="h-9 w-24 rounded-[4px] border hairline bg-transparent px-2 text-[11px] outline-none" placeholder="Amount"/>}<button onClick={() => moveStatus('Rejected')} className="h-9 rounded-[4px] border border-[#c78267] px-3 text-[11px] font-semibold text-[#9d422a]">Reject</button></div>}
-    {selected && ['Open', 'Rejected'].includes(selected.status) && <button onClick={removeRequest} className="mx-auto mt-4 block w-fit rounded-[4px] border border-[#c78267] bg-[var(--surface)] px-4 py-2 text-[11px] font-semibold text-[#9d422a] shadow-sm">Remove request</button>}
-    {showCreate && <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#171717]/35 p-5"><form onSubmit={createRequest} className="w-full max-w-[520px] rounded-[6px] border hairline bg-[var(--surface)] p-6 shadow-2xl"><div className="flex items-start justify-between"><div><div className="serif text-[32px]">New return request</div><p className="mt-1 text-[12px] text-[var(--muted)]">Create a request without typing a reference number.</p></div><button type="button" onClick={() => setShowCreate(false)} className="focus-ring rounded p-1"><Icon name="close" size={18}/></button></div><div className="mt-6 grid gap-3 sm:grid-cols-2"><input required value={newRequest.customerName} onChange={(event) => setNewRequest({ ...newRequest, customerName: event.target.value })} className="focus-ring h-10 rounded-[4px] border hairline bg-transparent px-3 text-[12px] outline-none" placeholder="Customer name"/><input required type="email" value={newRequest.customerEmail} onChange={(event) => setNewRequest({ ...newRequest, customerEmail: event.target.value })} className="focus-ring h-10 rounded-[4px] border hairline bg-transparent px-3 text-[12px] outline-none" placeholder="Customer email"/><input required value={newRequest.orderNumber} onChange={(event) => setNewRequest({ ...newRequest, orderNumber: event.target.value })} className="focus-ring h-10 rounded-[4px] border hairline bg-transparent px-3 text-[12px] outline-none" placeholder="Order number"/><input required value={newRequest.itemName} onChange={(event) => setNewRequest({ ...newRequest, itemName: event.target.value })} className="focus-ring h-10 rounded-[4px] border hairline bg-transparent px-3 text-[12px] outline-none" placeholder="Item name"/><input value={newRequest.itemVariant} onChange={(event) => setNewRequest({ ...newRequest, itemVariant: event.target.value })} className="focus-ring h-10 rounded-[4px] border hairline bg-transparent px-3 text-[12px] outline-none" placeholder="Variant / size"/><select value={newRequest.reason} onChange={(event) => setNewRequest({ ...newRequest, reason: event.target.value })} className="focus-ring h-10 rounded-[4px] border hairline bg-transparent px-3 text-[12px] outline-none"><option>Damaged</option><option>Wrong Item</option><option>Size Issue</option><option>Not As Described</option><option>Changed Mind</option><option>Allergic Reaction</option></select></div><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setShowCreate(false)} className="h-10 rounded-[4px] border hairline px-4 text-[12px] font-semibold">Cancel</button><button type="submit" className="h-10 rounded-[4px] bg-[var(--ink)] px-4 text-[12px] font-semibold text-white">Create request</button></div></form></div>}
+        <nav className="mt-10 px-3">
+          <div className="flex w-full items-center gap-3 rounded-[5px] bg-[#f4eadb] px-3.5 py-2.5 text-[13px] font-semibold text-[#73430b]">
+            <Icon name="box" size={18} />
+            <span className="flex-1">Desk Queue</span>
+            <span className="rounded-full bg-[#ebd7ba] px-2 py-0.5 text-[11px] font-bold">{totalCount}</span>
+          </div>
+        </nav>
 
-  </main>;
+        <div className="mt-auto border-t hairline p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-[5px] bg-[#e7e3d7] font-serif text-lg font-bold">B</div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[12px] font-bold">Brooklane Goods</div>
+              <div className="truncate text-[11px] text-[var(--muted)]">Small Home · Calmer Life</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Content Area */}
+      <section className="min-h-screen lg:ml-[240px]">
+        {/* Top Header */}
+        <header className="flex h-[68px] items-center justify-between border-b hairline bg-[var(--surface)] px-5 sm:px-8">
+          <div className="flex items-center gap-3">
+            <div className="serif text-[26px] lg:hidden">ReturnDesk</div>
+            <span className="hidden text-[12px] font-medium text-[var(--muted)] sm:inline">Returns Operations Desk</span>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="focus-ring flex h-9 items-center gap-2 rounded-[4px] bg-[var(--ink)] px-3 text-[12px] font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
+            >
+              <Icon name="plus" size={14} /> New Request
+            </button>
+            <div className="h-4 w-px bg-[var(--line)]" />
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e5e1d7] text-[12px] font-bold">JS</div>
+              <div className="hidden sm:block">
+                <div className="text-[12px] font-semibold">Jordan Singh</div>
+                <div className="text-[10px] text-[var(--muted)]">Support Agent</div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Content Split: Desk List + Detail Sidebar */}
+        <div className="flex min-h-[calc(100vh-68px)]">
+          {/* Desk List Section */}
+          <div className="min-w-0 flex-1 px-4 py-6 sm:px-8 sm:py-8">
+            <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <h1 className="serif text-[38px] leading-[1.0] tracking-[-.04em] sm:text-[46px]">Return Requests</h1>
+                <p className="mt-2 text-[13px] text-[var(--muted)]">
+                  Server-queried return operations. <span className="font-semibold text-[var(--ink)]">{totalCount} active requests</span> in database.
+                </p>
+              </div>
+            </div>
+
+            {/* Filter & Search Bar */}
+            <div className="mb-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-12">
+              <div className="relative sm:col-span-2 md:col-span-2 lg:col-span-5">
+                <span className="pointer-events-none absolute left-3 top-3 text-[var(--muted)]">
+                  <Icon name="search" size={16} />
+                </span>
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search customer, order, reference, item..."
+                  className="focus-ring h-10 w-full rounded-[4px] border hairline bg-[var(--surface)] pl-9 pr-3 text-[12px] outline-none placeholder:text-[#99978f]"
+                />
+              </div>
+
+              <div className="lg:col-span-3">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value as any);
+                    setPage(1);
+                  }}
+                  className="focus-ring h-10 w-full rounded-[4px] border hairline bg-[var(--surface)] px-2.5 text-[12px] outline-none"
+                >
+                  <option value="ALL">All statuses</option>
+                  <option value="OPEN">Open</option>
+                  <option value="IN_REVIEW">In review</option>
+                  <option value="APPROVED">Approved</option>
+                  <option value="REJECTED">Rejected</option>
+                  <option value="COMPLETED">Completed</option>
+                </select>
+              </div>
+
+              <div className="lg:col-span-2">
+                <select
+                  value={reasonFilter}
+                  onChange={(e) => {
+                    setReasonFilter(e.target.value as any);
+                    setPage(1);
+                  }}
+                  className="focus-ring h-10 w-full rounded-[4px] border hairline bg-[var(--surface)] px-2.5 text-[12px] outline-none"
+                >
+                  <option value="ALL">All reasons</option>
+                  <option value="DAMAGED">Damaged</option>
+                  <option value="WRONG_ITEM">Wrong Item</option>
+                  <option value="SIZE_ISSUE">Size Issue</option>
+                  <option value="NOT_AS_DESCRIBED">Not As Described</option>
+                  <option value="CHANGED_MIND">Changed Mind</option>
+                </select>
+              </div>
+
+              <div className="lg:col-span-2">
+                <select
+                  value={sortOrder}
+                  onChange={(e) => {
+                    setSortOrder(e.target.value as any);
+                    setPage(1);
+                  }}
+                  className="focus-ring h-10 w-full rounded-[4px] border hairline bg-[var(--surface)] px-2.5 text-[12px] outline-none"
+                >
+                  <option value="newest">Newest first</option>
+                  <option value="oldest">Oldest first</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Server Error State */}
+            {serverError && (
+              <div className="mb-6 rounded-[5px] border border-[#d97c6c] bg-[#faebe8] p-4 text-[#8a2414]">
+                <div className="flex items-center gap-2 font-semibold text-[13px]">
+                  <Icon name="alert" size={17} /> Server Query Failed
+                </div>
+                <p className="mt-1 text-[12px] leading-relaxed">{serverError}</p>
+                <button
+                  onClick={() => fetchRequests()}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-[4px] bg-[#8a2414] px-3 py-1.5 text-[11px] font-semibold text-white"
+                >
+                  <Icon name="refresh" size={13} /> Retry Query
+                </button>
+              </div>
+            )}
+
+            {/* Requests Table */}
+            <div className="overflow-x-auto rounded-[5px] border hairline bg-[var(--surface)] shadow-xs">
+              <div className="min-w-[760px]">
+                {/* Table Header */}
+                <div className="grid grid-cols-[1.2fr_1.6fr_1.8fr_1.1fr_1.1fr_40px] items-center border-b hairline bg-[#f5f3ec] px-4 py-3 text-[10px] font-bold uppercase tracking-[.13em] text-[var(--muted)]">
+                  <span>Reference</span>
+                  <span>Customer & Order</span>
+                  <span>Item & Qty</span>
+                  <span>Reason</span>
+                  <span>Status</span>
+                  <span />
+                </div>
+
+                {/* Loading State */}
+                {loading ? (
+                  <div className="divide-y hairline">
+                    {[1, 2, 3, 4, 5, 6].map((i) => (
+                      <div key={i} className="flex animate-pulse items-center gap-4 px-4 py-4">
+                        <div className="h-4 w-20 rounded bg-[#e8e5dc]" />
+                        <div className="h-4 w-40 rounded bg-[#e8e5dc]" />
+                        <div className="h-4 w-48 rounded bg-[#e8e5dc]" />
+                        <div className="h-4 w-24 rounded bg-[#e8e5dc]" />
+                        <div className="h-5 w-16 rounded-full bg-[#e8e5dc]" />
+                      </div>
+                    ))}
+                  </div>
+                ) : requests.length === 0 ? (
+                  /* Empty State */
+                  <div className="px-6 py-20 text-center">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#eee9dc] text-[var(--muted)]">
+                      <Icon name="box" size={24} />
+                    </div>
+                    <div className="serif mt-3 text-[26px]">No requests found</div>
+                    <p className="mx-auto mt-1 max-w-sm text-[13px] text-[var(--muted)]">
+                      {debouncedQuery || statusFilter !== 'ALL' || reasonFilter !== 'ALL'
+                        ? 'No return requests matched your active search or filters. Try adjusting your query.'
+                        : 'There are currently no return requests on the desk. You can raise a new one above.'}
+                    </p>
+                    {(debouncedQuery || statusFilter !== 'ALL' || reasonFilter !== 'ALL') && (
+                      <button
+                        onClick={() => {
+                          setQuery('');
+                          setDebouncedQuery('');
+                          setStatusFilter('ALL');
+                          setReasonFilter('ALL');
+                          setPage(1);
+                        }}
+                        className="mt-4 rounded-[4px] border hairline bg-white px-3 py-1.5 text-[11px] font-semibold text-[var(--ink)] shadow-xs"
+                      >
+                        Reset All Filters
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  /* Request Rows */
+                  <div className="divide-y hairline">
+                    {requests.map((r) => {
+                      const isSelected = selectedRequest?.id === r.id;
+                      const statusInfo = statusDisplay[r.status];
+                      return (
+                        <button
+                          key={r.id}
+                          onClick={() => {
+                            setSelectedRequest(r);
+                            setMobileDetailOpen(true);
+                          }}
+                          className={`focus-ring grid w-full grid-cols-[1.2fr_1.6fr_1.8fr_1.1fr_1.1fr_40px] items-center px-4 py-3.5 text-left transition-colors hover:bg-[#f6f2ea] ${
+                            isSelected ? 'bg-[#f7f0e2]' : ''
+                          }`}
+                        >
+                          {/* Reference */}
+                          <div className="min-w-0 pr-2">
+                            <span className="mono text-[12px] font-semibold text-[var(--ink)]">{r.reference}</span>
+                            <span className="block text-[10px] text-[var(--muted)]">{formatRelativeTime(r.createdAt)}</span>
+                          </div>
+
+                          {/* Customer & Order */}
+                          <div className="min-w-0 pr-2">
+                            <span className="block truncate text-[12px] font-semibold text-[var(--ink)]">{r.customerName}</span>
+                            <span className="block truncate text-[11px] text-[var(--muted)]">
+                              {r.orderNumber} · {r.customerEmail}
+                            </span>
+                          </div>
+
+                          {/* Item & Qty */}
+                          <div className="min-w-0 pr-2">
+                            <span className="block truncate text-[12px] font-medium text-[var(--ink)]">{r.itemName}</span>
+                            <span className="block truncate text-[11px] text-[var(--muted)]">
+                              Qty {r.units || 1} {r.itemVariant ? `· ${r.itemVariant}` : ''}
+                            </span>
+                          </div>
+
+                          {/* Reason */}
+                          <div className="min-w-0 pr-2">
+                            <span className="truncate text-[12px] text-[#4d4c45]">{reasonDisplay[r.reason] || r.reason}</span>
+                          </div>
+
+                          {/* Status Badge */}
+                          <div>
+                            <span
+                              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${statusInfo.badgeClass}`}
+                            >
+                              <span className={`h-1.5 w-1.5 rounded-full ${statusInfo.dotClass}`} />
+                              {statusInfo.label}
+                            </span>
+                          </div>
+
+                          {/* Chevron */}
+                          <div className="text-right text-[var(--muted)]">
+                            <Icon name="chevron" size={16} />
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Pagination Controls */}
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-[12px] text-[var(--muted)]">
+              <span>
+                Showing {requests.length > 0 ? (page - 1) * 10 + 1 : 0}–{Math.min(page * 10, totalCount)} of {totalCount} requests
+              </span>
+              <div className="flex items-center gap-3">
+                <button
+                  disabled={page <= 1 || loading}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  className="rounded-[4px] border hairline bg-[var(--surface)] px-3 py-1 font-semibold text-[var(--ink)] shadow-2xs transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  ← Previous
+                </button>
+                <span>
+                  Page <span className="font-semibold text-[var(--ink)]">{page}</span> of {totalPages}
+                </span>
+                <button
+                  disabled={page >= totalPages || loading}
+                  onClick={() => setPage((p) => p + 1)}
+                  className="rounded-[4px] border hairline bg-[var(--surface)] px-3 py-1 font-semibold text-[var(--ink)] shadow-2xs transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Request Detail Panel (Desktop Drawer / Mobile Full-Screen Overlay) */}
+          {selectedRequest && (
+            <aside
+              className={`detail-panel w-full shrink-0 border-l hairline bg-[var(--surface)] md:w-[420px] ${
+                mobileDetailOpen ? 'block' : 'hidden lg:block'
+              }`}
+            >
+              {/* Detail Header */}
+              <div className="flex h-[68px] items-center justify-between border-b hairline px-5">
+                <div>
+                  <div className="mono text-[19px] font-bold text-[var(--ink)]">{selectedRequest.reference}</div>
+                  <div className="text-[11px] text-[var(--muted)]">
+                    Created {new Date(selectedRequest.createdAt).toLocaleDateString()} · {formatRelativeTime(selectedRequest.createdAt)}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  {!isDecided && (
+                    <button
+                      onClick={openEditModal}
+                      title="Edit request details"
+                      className="focus-ring flex items-center gap-1 rounded-[4px] border hairline px-2.5 py-1 text-[11px] font-semibold text-[var(--ink)] hover:bg-[#ede8dc]"
+                    >
+                      <Icon name="edit" size={13} /> Edit
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setMobileDetailOpen(false)}
+                    className="focus-ring rounded p-1 text-[var(--muted)] hover:text-[var(--ink)] lg:hidden"
+                  >
+                    <Icon name="close" size={20} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Detail Scrollable Body */}
+              <div className="scrollbar h-[calc(100vh-136px)] overflow-y-auto px-5 py-5 space-y-5">
+                {/* Status & Lifecycle Indicator */}
+                <div className="rounded-[5px] border hairline bg-[#f7f5ed] p-3.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-[.13em] text-[var(--muted)]">Status Lifecycle</span>
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${
+                        statusDisplay[selectedRequest.status].badgeClass
+                      }`}
+                    >
+                      <span className={`h-1.5 w-1.5 rounded-full ${statusDisplay[selectedRequest.status].dotClass}`} />
+                      {statusDisplay[selectedRequest.status].label}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between text-[10px] font-semibold text-[var(--muted)]">
+                    <span className={selectedRequest.status === 'OPEN' ? 'text-[var(--ink)] font-bold' : ''}>1. Open</span>
+                    <span>→</span>
+                    <span className={selectedRequest.status === 'IN_REVIEW' ? 'text-[var(--ink)] font-bold' : ''}>2. In Review</span>
+                    <span>→</span>
+                    <span
+                      className={
+                        selectedRequest.status === 'APPROVED' || selectedRequest.status === 'REJECTED'
+                          ? 'text-[var(--ink)] font-bold'
+                          : ''
+                      }
+                    >
+                      3. Decision
+                    </span>
+                    <span>→</span>
+                    <span className={selectedRequest.status === 'COMPLETED' ? 'text-[var(--ink)] font-bold' : ''}>4. Completed</span>
+                  </div>
+
+                  {/* Resolution banner if Approved or Completed */}
+                  {selectedRequest.resolution && (
+                    <div className="mt-3 border-t hairline pt-2.5 text-[11px]">
+                      <span className="font-semibold text-[var(--ink)]">Resolution:</span>{' '}
+                      <span className="text-[#205b36] font-medium">{resolutionDisplay[selectedRequest.resolution]}</span>
+                      {selectedRequest.resolution === 'REFUND' && selectedRequest.refundAmount && (
+                        <span className="ml-2 font-bold text-[#205b36]">(${Number(selectedRequest.refundAmount).toFixed(2)})</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Customer & Order Card */}
+                <div className="grid grid-cols-2 gap-4 border-b hairline pb-5">
+                  <div>
+                    <div className="mb-1 text-[10px] font-bold uppercase tracking-[.13em] text-[var(--muted)]">Customer</div>
+                    <div className="text-[13px] font-bold text-[var(--ink)]">{selectedRequest.customerName}</div>
+                    <div className="mt-0.5 text-[11px] text-[var(--muted)] truncate">{selectedRequest.customerEmail}</div>
+                  </div>
+                  <div className="border-l hairline pl-4">
+                    <div className="mb-1 text-[10px] font-bold uppercase tracking-[.13em] text-[var(--muted)]">Order</div>
+                    <div className="text-[13px] font-bold text-[var(--ink)]">{selectedRequest.orderNumber}</div>
+                    <div className="mt-0.5 text-[11px] text-[var(--muted)]">Online Store</div>
+                  </div>
+                </div>
+
+                {/* Item Details */}
+                <div className="border-b hairline pb-5">
+                  <div className="mb-2 text-[10px] font-bold uppercase tracking-[.13em] text-[var(--muted)]">Item Details</div>
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[5px] bg-[#ece7dc] text-2xl">
+                      📦
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[13px] font-bold text-[var(--ink)]">{selectedRequest.itemName}</div>
+                      {selectedRequest.itemVariant && (
+                        <div className="mt-0.5 text-[11px] text-[var(--muted)]">{selectedRequest.itemVariant}</div>
+                      )}
+                      <div className="mt-1 text-[11px] font-semibold text-[#54524c]">
+                        Units to return: <span className="font-bold text-[var(--ink)]">{selectedRequest.units || 1}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Return Reason */}
+                <div className="border-b hairline pb-5">
+                  <div className="mb-1 text-[10px] font-bold uppercase tracking-[.13em] text-[var(--muted)]">Return Reason</div>
+                  <div className="text-[13px] font-bold text-[var(--ink)]">
+                    {reasonDisplay[selectedRequest.reason] || selectedRequest.reason}
+                  </div>
+                </div>
+
+                {/* Legal Action Controls based on current state */}
+                <div className="rounded-[5px] border hairline bg-[#fbfaf8] p-4">
+                  <div className="mb-3 text-[10px] font-bold uppercase tracking-[.13em] text-[var(--muted)]">
+                    Available Lifecycle Actions
+                  </div>
+
+                  {/* 1. If OPEN: Legal action is 'Start Review' or 'Remove request' */}
+                  {selectedRequest.status === 'OPEN' && (
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => handleTransition('IN_REVIEW')}
+                        className="focus-ring flex h-10 w-full items-center justify-center rounded-[4px] bg-[#2a2926] text-[12px] font-bold text-white shadow-xs transition-opacity hover:opacity-90"
+                      >
+                        Start Review
+                      </button>
+                      <button
+                        onClick={handleRemoveRequest}
+                        className="focus-ring flex h-9 w-full items-center justify-center gap-1.5 rounded-[4px] border border-[#d98b79] bg-transparent text-[11px] font-semibold text-[#963721] hover:bg-[#faeae6]"
+                      >
+                        <Icon name="trash" size={13} /> Remove Request From Desk
+                      </button>
+                    </div>
+                  )}
+
+                  {/* 2. If IN_REVIEW: Legal actions are 'Approve' (needs resolution) or 'Reject'. Removal is NOT allowed. */}
+                  {selectedRequest.status === 'IN_REVIEW' && (
+                    <div className="space-y-2.5">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleTransition('APPROVED')}
+                          className="focus-ring flex h-10 flex-1 items-center justify-center rounded-[4px] bg-[#1f5f37] text-[12px] font-bold text-white shadow-xs transition-opacity hover:opacity-90"
+                        >
+                          Approve Return…
+                        </button>
+                        <button
+                          onClick={() => handleTransition('REJECTED')}
+                          className="focus-ring flex h-10 flex-1 items-center justify-center rounded-[4px] border border-[#d98b79] bg-transparent text-[12px] font-semibold text-[#963721] hover:bg-[#faeae6]"
+                        >
+                          Reject Return
+                        </button>
+                      </div>
+                      <p className="text-[11px] italic text-[var(--muted)]">
+                        Approval requires selecting a resolution (Refund, Replacement, or Store Credit).
+                      </p>
+                    </div>
+                  )}
+
+                  {/* 3. If APPROVED: Legal action is 'Complete Return'. Details locked. Removal NOT allowed. */}
+                  {selectedRequest.status === 'APPROVED' && (
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => handleTransition('COMPLETED')}
+                        className="focus-ring flex h-10 w-full items-center justify-center rounded-[4px] bg-[#1f5f37] text-[12px] font-bold text-white shadow-xs transition-opacity hover:opacity-90"
+                      >
+                        Complete Return
+                      </button>
+                      <div className="flex items-center gap-1.5 text-[11px] text-[var(--muted)]">
+                        <Icon name="lock" size={13} /> Details are locked once decided.
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 4. If REJECTED: Final state. Removal IS allowed. Details locked. */}
+                  {selectedRequest.status === 'REJECTED' && (
+                    <div className="space-y-2.5">
+                      <div className="rounded-[4px] bg-[#f9ebe6] p-2.5 text-[11px] text-[#933d28]">
+                        This request is closed and rejected. Details are locked. Notes can still be recorded.
+                      </div>
+                      <button
+                        onClick={handleRemoveRequest}
+                        className="focus-ring flex h-9 w-full items-center justify-center gap-1.5 rounded-[4px] border border-[#d98b79] bg-transparent text-[11px] font-semibold text-[#963721] hover:bg-[#faeae6]"
+                      >
+                        <Icon name="trash" size={13} /> Remove Request From Desk
+                      </button>
+                    </div>
+                  )}
+
+                  {/* 5. If COMPLETED: Final state. Details locked. Removal NOT allowed. */}
+                  {selectedRequest.status === 'COMPLETED' && (
+                    <div className="rounded-[4px] bg-[#eef7ee] p-2.5 text-[11px] text-[#205b36]">
+                      This request has been completed and closed. Details and record are permanent. Notes can still be appended.
+                    </div>
+                  )}
+                </div>
+
+                {/* Notes Timeline Section */}
+                <div className="pt-2">
+                  <div className="mb-3 flex items-center justify-between border-b hairline pb-2">
+                    <span className="text-[11px] font-bold uppercase tracking-[.13em] text-[var(--muted)]">
+                      Notes Timeline ({selectedRequest.notes?.length || 0})
+                    </span>
+                    <span className="text-[10px] text-[var(--muted)]">Immutable history</span>
+                  </div>
+
+                  {/* Existing Notes List */}
+                  {selectedRequest.notes && selectedRequest.notes.length > 0 ? (
+                    <div className="space-y-3">
+                      {selectedRequest.notes.map((n) => (
+                        <div key={n.id} className="rounded-[4px] border hairline bg-[#fcfbfa] p-3 shadow-2xs">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="font-semibold text-[var(--ink)]">{n.authorName}</span>
+                            <span className="text-[10px] text-[var(--muted)]">{formatRelativeTime(n.createdAt)}</span>
+                          </div>
+                          <p className="mt-1 text-[12px] leading-relaxed text-[#4e4d46] whitespace-pre-wrap">{n.body}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-[4px] border border-dashed hairline p-4 text-center text-[12px] text-[var(--muted)]">
+                      No notes recorded yet on this request.
+                    </div>
+                  )}
+
+                  {/* Add Note Form */}
+                  <form onSubmit={handleAddNote} className="mt-4">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newNote}
+                        onChange={(e) => setNewNote(e.target.value)}
+                        placeholder="Add an internal note..."
+                        className="focus-ring h-9 min-w-0 flex-1 rounded-[4px] border hairline bg-[var(--surface)] px-3 text-[12px] outline-none"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isAddingNote || !newNote.trim()}
+                        className="h-9 rounded-[4px] bg-[var(--ink)] px-3.5 text-[11px] font-semibold text-white transition-opacity disabled:opacity-40"
+                      >
+                        {isAddingNote ? 'Saving…' : 'Add Note'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </aside>
+          )}
+        </div>
+      </section>
+
+      {/* Approve Request Modal (Enforcing Rule 2) */}
+      {showApprovalModal && selectedRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <form
+            onSubmit={handleConfirmApproval}
+            className="w-full max-w-md rounded-[6px] border hairline bg-[var(--surface)] p-6 shadow-2xl"
+          >
+            <div className="flex items-start justify-between border-b hairline pb-3">
+              <div>
+                <h2 className="serif text-[26px] font-normal leading-tight">Approve Return Request</h2>
+                <p className="mt-0.5 text-[11px] text-[var(--muted)]">
+                  {selectedRequest.reference} · {selectedRequest.customerName}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowApprovalModal(false)}
+                className="focus-ring rounded p-1 text-[var(--muted)] hover:text-[var(--ink)]"
+              >
+                <Icon name="close" size={18} />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-[.1em] text-[var(--muted)]">
+                  Resolution Type <span className="text-red-600">*</span>
+                </label>
+                <select
+                  value={approvalResolution}
+                  onChange={(e) => setApprovalResolution(e.target.value as Resolution)}
+                  className="focus-ring mt-1.5 h-10 w-full rounded-[4px] border hairline bg-[var(--surface)] px-3 text-[12px] outline-none"
+                >
+                  <option value="REFUND">Refund</option>
+                  <option value="REPLACEMENT">Replacement</option>
+                  <option value="STORE_CREDIT">Store Credit</option>
+                </select>
+              </div>
+
+              {approvalResolution === 'REFUND' && (
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-[.1em] text-[var(--muted)]">
+                    Refund Amount ($) <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    required
+                    value={approvalRefundAmount}
+                    onChange={(e) => setApprovalRefundAmount(e.target.value)}
+                    placeholder="e.g. 45.00"
+                    className="focus-ring mt-1.5 h-10 w-full rounded-[4px] border hairline bg-[var(--surface)] px-3 text-[12px] outline-none"
+                  />
+                  <p className="mt-1 text-[11px] text-[var(--muted)]">
+                    Server rule: A refund amount strictly greater than zero is required.
+                  </p>
+                </div>
+              )}
+
+              {approvalResolution !== 'REFUND' && (
+                <div className="rounded-[4px] bg-[#f5f3ec] p-3 text-[11px] text-[var(--muted)]">
+                  Server rule: If the resolution is not Refund, no refund amount may be recorded.
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2.5 border-t hairline pt-4">
+              <button
+                type="button"
+                onClick={() => setShowApprovalModal(false)}
+                className="h-9 rounded-[4px] border hairline px-4 text-[12px] font-semibold text-[var(--ink)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmittingApproval}
+                className="h-9 rounded-[4px] bg-[#1f5f37] px-4 text-[12px] font-semibold text-white shadow-xs disabled:opacity-40"
+              >
+                {isSubmittingApproval ? 'Approving…' : 'Confirm Approval'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Create Return Request Modal (Enforcing Rule 3 & Unique Reference) */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <form
+            onSubmit={handleCreateRequest}
+            className="w-full max-w-lg rounded-[6px] border hairline bg-[var(--surface)] p-6 shadow-2xl"
+          >
+            <div className="flex items-start justify-between border-b hairline pb-3">
+              <div>
+                <h2 className="serif text-[28px] font-normal leading-tight">Raise Return Request</h2>
+                <p className="mt-0.5 text-[11px] text-[var(--muted)]">
+                  The system will automatically generate a unique, human-readable reference number.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                className="focus-ring rounded p-1 text-[var(--muted)] hover:text-[var(--ink)]"
+              >
+                <Icon name="close" size={18} />
+              </button>
+            </div>
+
+            {createError && (
+              <div className="mt-4 rounded-[4px] border border-[#d97c6c] bg-[#faebe8] p-3 text-[12px] text-[#8a2414]">
+                <span className="font-bold">Error:</span> {createError}
+              </div>
+            )}
+
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-[.1em] text-[var(--muted)]">
+                  Customer Name <span className="text-red-600">*</span>
+                </label>
+                <input
+                  required
+                  value={createForm.customerName}
+                  onChange={(e) => setCreateForm({ ...createForm, customerName: e.target.value })}
+                  placeholder="e.g. Priya Shah"
+                  className="focus-ring mt-1 h-9 w-full rounded-[4px] border hairline bg-[var(--surface)] px-3 text-[12px] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-[.1em] text-[var(--muted)]">
+                  Customer Email <span className="text-red-600">*</span>
+                </label>
+                <input
+                  required
+                  type="email"
+                  value={createForm.customerEmail}
+                  onChange={(e) => setCreateForm({ ...createForm, customerEmail: e.target.value })}
+                  placeholder="priya@example.com"
+                  className="focus-ring mt-1 h-9 w-full rounded-[4px] border hairline bg-[var(--surface)] px-3 text-[12px] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-[.1em] text-[var(--muted)]">
+                  Order Number <span className="text-red-600">*</span>
+                </label>
+                <input
+                  required
+                  value={createForm.orderNumber}
+                  onChange={(e) => setCreateForm({ ...createForm, orderNumber: e.target.value })}
+                  placeholder="e.g. ORD-10432"
+                  className="focus-ring mt-1 h-9 w-full rounded-[4px] border hairline bg-[var(--surface)] px-3 text-[12px] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-[.1em] text-[var(--muted)]">
+                  Units (Quantity) <span className="text-red-600">*</span>
+                </label>
+                <input
+                  required
+                  type="number"
+                  min="1"
+                  value={createForm.units}
+                  onChange={(e) => setCreateForm({ ...createForm, units: parseInt(e.target.value, 10) || 1 })}
+                  className="focus-ring mt-1 h-9 w-full rounded-[4px] border hairline bg-[var(--surface)] px-3 text-[12px] outline-none"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold uppercase tracking-[.1em] text-[var(--muted)]">
+                  Item Name <span className="text-red-600">*</span>
+                </label>
+                <input
+                  required
+                  value={createForm.itemName}
+                  onChange={(e) => setCreateForm({ ...createForm, itemName: e.target.value })}
+                  placeholder="e.g. Stoneware Ceramic Mug"
+                  className="focus-ring mt-1 h-9 w-full rounded-[4px] border hairline bg-[var(--surface)] px-3 text-[12px] outline-none"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold uppercase tracking-[.1em] text-[var(--muted)]">
+                  Item Variant (Optional)
+                </label>
+                <input
+                  value={createForm.itemVariant}
+                  onChange={(e) => setCreateForm({ ...createForm, itemVariant: e.target.value })}
+                  placeholder="e.g. Sand · Set of 2"
+                  className="focus-ring mt-1 h-9 w-full rounded-[4px] border hairline bg-[var(--surface)] px-3 text-[12px] outline-none"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold uppercase tracking-[.1em] text-[var(--muted)]">
+                  Return Reason <span className="text-red-600">*</span>
+                </label>
+                <select
+                  value={createForm.reason}
+                  onChange={(e) => setCreateForm({ ...createForm, reason: e.target.value as Reason })}
+                  className="focus-ring mt-1 h-9 w-full rounded-[4px] border hairline bg-[var(--surface)] px-3 text-[12px] outline-none"
+                >
+                  <option value="DAMAGED">Damaged</option>
+                  <option value="WRONG_ITEM">Wrong Item</option>
+                  <option value="SIZE_ISSUE">Size Issue</option>
+                  <option value="NOT_AS_DESCRIBED">Not As Described</option>
+                  <option value="CHANGED_MIND">Changed Mind</option>
+                </select>
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold uppercase tracking-[.1em] text-[var(--muted)]">
+                  Initial Customer Note (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={createForm.initialNote}
+                  onChange={(e) => setCreateForm({ ...createForm, initialNote: e.target.value })}
+                  placeholder="Customer's comments regarding the return..."
+                  className="focus-ring mt-1 w-full rounded-[4px] border hairline bg-[var(--surface)] p-2.5 text-[12px] outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2.5 border-t hairline pt-4">
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                className="h-9 rounded-[4px] border hairline px-4 text-[12px] font-semibold text-[var(--ink)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isCreating}
+                className="h-9 rounded-[4px] bg-[var(--ink)] px-4 text-[12px] font-semibold text-white shadow-xs disabled:opacity-40"
+              >
+                {isCreating ? 'Creating…' : 'Create Request'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Edit Request Details Modal (Enforcing Rule 4) */}
+      {showEditModal && selectedRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <form
+            onSubmit={handleSaveEdit}
+            className="w-full max-w-lg rounded-[6px] border hairline bg-[var(--surface)] p-6 shadow-2xl"
+          >
+            <div className="flex items-start justify-between border-b hairline pb-3">
+              <div>
+                <h2 className="serif text-[28px] font-normal leading-tight">Edit Request Details</h2>
+                <p className="mt-0.5 text-[11px] text-[var(--muted)]">
+                  Correct details for {selectedRequest.reference} while in undecided status.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEditModal(false)}
+                className="focus-ring rounded p-1 text-[var(--muted)] hover:text-[var(--ink)]"
+              >
+                <Icon name="close" size={18} />
+              </button>
+            </div>
+
+            {editError && (
+              <div className="mt-4 rounded-[4px] border border-[#d97c6c] bg-[#faebe8] p-3 text-[12px] text-[#8a2414]">
+                <span className="font-bold">Error:</span> {editError}
+              </div>
+            )}
+
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-[.1em] text-[var(--muted)]">
+                  Customer Name <span className="text-red-600">*</span>
+                </label>
+                <input
+                  required
+                  value={editForm.customerName}
+                  onChange={(e) => setEditForm({ ...editForm, customerName: e.target.value })}
+                  className="focus-ring mt-1 h-9 w-full rounded-[4px] border hairline bg-[var(--surface)] px-3 text-[12px] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-[.1em] text-[var(--muted)]">
+                  Customer Email <span className="text-red-600">*</span>
+                </label>
+                <input
+                  required
+                  type="email"
+                  value={editForm.customerEmail}
+                  onChange={(e) => setEditForm({ ...editForm, customerEmail: e.target.value })}
+                  className="focus-ring mt-1 h-9 w-full rounded-[4px] border hairline bg-[var(--surface)] px-3 text-[12px] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-[.1em] text-[var(--muted)]">
+                  Order Number <span className="text-red-600">*</span>
+                </label>
+                <input
+                  required
+                  value={editForm.orderNumber}
+                  onChange={(e) => setEditForm({ ...editForm, orderNumber: e.target.value })}
+                  className="focus-ring mt-1 h-9 w-full rounded-[4px] border hairline bg-[var(--surface)] px-3 text-[12px] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-[.1em] text-[var(--muted)]">
+                  Units (Quantity) <span className="text-red-600">*</span>
+                </label>
+                <input
+                  required
+                  type="number"
+                  min="1"
+                  value={editForm.units}
+                  onChange={(e) => setEditForm({ ...editForm, units: parseInt(e.target.value, 10) || 1 })}
+                  className="focus-ring mt-1 h-9 w-full rounded-[4px] border hairline bg-[var(--surface)] px-3 text-[12px] outline-none"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold uppercase tracking-[.1em] text-[var(--muted)]">
+                  Item Name <span className="text-red-600">*</span>
+                </label>
+                <input
+                  required
+                  value={editForm.itemName}
+                  onChange={(e) => setEditForm({ ...editForm, itemName: e.target.value })}
+                  className="focus-ring mt-1 h-9 w-full rounded-[4px] border hairline bg-[var(--surface)] px-3 text-[12px] outline-none"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold uppercase tracking-[.1em] text-[var(--muted)]">
+                  Item Variant
+                </label>
+                <input
+                  value={editForm.itemVariant}
+                  onChange={(e) => setEditForm({ ...editForm, itemVariant: e.target.value })}
+                  className="focus-ring mt-1 h-9 w-full rounded-[4px] border hairline bg-[var(--surface)] px-3 text-[12px] outline-none"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold uppercase tracking-[.1em] text-[var(--muted)]">
+                  Return Reason <span className="text-red-600">*</span>
+                </label>
+                <select
+                  value={editForm.reason}
+                  onChange={(e) => setEditForm({ ...editForm, reason: e.target.value as Reason })}
+                  className="focus-ring mt-1 h-9 w-full rounded-[4px] border hairline bg-[var(--surface)] px-3 text-[12px] outline-none"
+                >
+                  <option value="DAMAGED">Damaged</option>
+                  <option value="WRONG_ITEM">Wrong Item</option>
+                  <option value="SIZE_ISSUE">Size Issue</option>
+                  <option value="NOT_AS_DESCRIBED">Not As Described</option>
+                  <option value="CHANGED_MIND">Changed Mind</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2.5 border-t hairline pt-4">
+              <button
+                type="button"
+                onClick={() => setShowEditModal(false)}
+                className="h-9 rounded-[4px] border hairline px-4 text-[12px] font-semibold text-[var(--ink)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isEditing}
+                className="h-9 rounded-[4px] bg-[var(--ink)] px-4 text-[12px] font-semibold text-white shadow-xs disabled:opacity-40"
+              >
+                {isEditing ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </main>
+  );
 }

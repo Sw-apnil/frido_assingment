@@ -1,8 +1,11 @@
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "public";
+
 -- CreateEnum
 CREATE TYPE "RequestStatus" AS ENUM ('OPEN', 'IN_REVIEW', 'APPROVED', 'REJECTED', 'COMPLETED');
 
 -- CreateEnum
-CREATE TYPE "RequestReason" AS ENUM ('DAMAGED', 'WRONG_ITEM', 'SIZE_ISSUE', 'NOT_AS_DESCRIBED', 'CHANGED_MIND', 'ALLERGIC_REACTION');
+CREATE TYPE "RequestReason" AS ENUM ('DAMAGED', 'WRONG_ITEM', 'SIZE_ISSUE', 'NOT_AS_DESCRIBED', 'CHANGED_MIND');
 
 -- CreateEnum
 CREATE TYPE "Resolution" AS ENUM ('REFUND', 'REPLACEMENT', 'STORE_CREDIT');
@@ -15,7 +18,8 @@ CREATE TABLE "ReturnRequest" (
     "customerEmail" TEXT NOT NULL,
     "orderNumber" TEXT NOT NULL,
     "itemName" TEXT NOT NULL,
-    "itemVariant" TEXT NOT NULL,
+    "itemVariant" TEXT,
+    "units" INTEGER NOT NULL DEFAULT 1,
     "reason" "RequestReason" NOT NULL,
     "status" "RequestStatus" NOT NULL DEFAULT 'OPEN',
     "resolution" "Resolution",
@@ -48,7 +52,14 @@ CREATE INDEX "ReturnRequest_status_createdAt_idx" ON "ReturnRequest"("status", "
 CREATE INDEX "ReturnRequest_reason_createdAt_idx" ON "ReturnRequest"("reason", "createdAt");
 
 -- CreateIndex
+CREATE INDEX "ReturnRequest_orderNumber_itemName_idx" ON "ReturnRequest"("orderNumber", "itemName");
+
+-- CreateIndex
+CREATE INDEX "ReturnRequest_removedAt_idx" ON "ReturnRequest"("removedAt");
+
+-- CreateIndex
 CREATE INDEX "Note_requestId_createdAt_idx" ON "Note"("requestId", "createdAt");
 
 -- AddForeignKey
 ALTER TABLE "Note" ADD CONSTRAINT "Note_requestId_fkey" FOREIGN KEY ("requestId") REFERENCES "ReturnRequest"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+

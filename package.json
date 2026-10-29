@@ -10,6 +10,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev --name init",
     "db:seed": "tsx prisma/seed.ts",
+    "test:rules": "tsx tmp/verify_rules.ts",
     "postinstall": "prisma generate"
   },
   "engines": { "node": ">=20.0.0" },

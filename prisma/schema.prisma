@@ -22,7 +22,6 @@ enum RequestReason {
   SIZE_ISSUE
   NOT_AS_DESCRIBED
   CHANGED_MIND
-  ALLERGIC_REACTION
 }
 
 enum Resolution {
@@ -32,31 +31,36 @@ enum Resolution {
 }
 
 model ReturnRequest {
-  id String @id @default(cuid())
-  reference String @unique
-  customerName String
+  id            String         @id @default(cuid())
+  reference     String         @unique
+  customerName  String
   customerEmail String
-  orderNumber String
-  itemName String
-  itemVariant String
-  reason RequestReason
-  status RequestStatus @default(OPEN)
-  resolution Resolution?
-  refundAmount Decimal? @db.Decimal(10,2)
-  removedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  notes Note[]
+  orderNumber   String
+  itemName      String
+  itemVariant   String?
+  units         Int            @default(1)
+  reason        RequestReason
+  status        RequestStatus  @default(OPEN)
+  resolution    Resolution?
+  refundAmount  Decimal?       @db.Decimal(10, 2)
+  removedAt     DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  notes         Note[]
+
   @@index([status, createdAt])
   @@index([reason, createdAt])
+  @@index([orderNumber, itemName])
+  @@index([removedAt])
 }
 
 model Note {
-  id String @id @default(cuid())
-  body String
+  id         String        @id @default(cuid())
+  body       String
   authorName String
-  requestId String
-  createdAt DateTime @default(now())
-  request ReturnRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId  String
+  createdAt  DateTime      @default(now())
+  request    ReturnRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
   @@index([requestId, createdAt])
 }
