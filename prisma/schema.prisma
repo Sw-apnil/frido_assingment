@@ -1,0 +1,36 @@
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "postgresql" url = env("DATABASE_URL") }
+
+enum RequestStatus { OPEN IN_REVIEW APPROVED REJECTED COMPLETED }
+enum RequestReason { DAMAGED WRONG_ITEM SIZE_ISSUE NOT_AS_DESCRIBED CHANGED_MIND ALLERGIC_REACTION }
+enum Resolution { REFUND REPLACEMENT STORE_CREDIT }
+
+model ReturnRequest {
+  id String @id @default(cuid())
+  reference String @unique
+  customerName String
+  customerEmail String
+  orderNumber String
+  itemName String
+  itemVariant String
+  reason RequestReason
+  status RequestStatus @default(OPEN)
+  resolution Resolution?
+  refundAmount Decimal? @db.Decimal(10,2)
+  removedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  notes Note[]
+  @@index([status, createdAt])
+  @@index([reason, createdAt])
+}
+
+model Note {
+  id String @id @default(cuid())
+  body String
+  authorName String
+  requestId String
+  createdAt DateTime @default(now())
+  request ReturnRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  @@index([requestId, createdAt])
+}
