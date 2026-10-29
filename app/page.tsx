@@ -1,11 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 type Status = 'Open' | 'In review' | 'Approved' | 'Rejected' | 'Completed';
 type Reason = 'Damaged' | 'Wrong Item' | 'Size Issue' | 'Not As Described' | 'Changed Mind' | 'Allergic Reaction';
 type Request = {
-  id: string; customer: string; email: string; order: string; item: string; variant: string;
+  id: string; apiId?: string; customer: string; email: string; order: string; item: string; variant: string;
   reason: Reason; status: Status; age: string; created: string; amount: string; resolution?: string;
   note: string; avatar: string;
 };
@@ -24,6 +24,12 @@ const requests: Request[] = [
 ];
 
 const statusTone: Record<Status, string> = { Open: 'bg-[#f6e8d0] text-[#8d530a]', 'In review': 'bg-[#e8edf0] text-[#465968]', Approved: 'bg-[#dfeede] text-[#236039]', Rejected: 'bg-[#f5dfd6] text-[#9d422a]', Completed: 'bg-[#e0eddf] text-[#236039]' };
+
+function apiRequestToView(item: any): Request {
+  const statusLabels: Record<string, Status> = { OPEN: 'Open', IN_REVIEW: 'In review', APPROVED: 'Approved', REJECTED: 'Rejected', COMPLETED: 'Completed' };
+  const reasonLabels: Record<string, Reason> = { DAMAGED: 'Damaged', WRONG_ITEM: 'Wrong Item', SIZE_ISSUE: 'Size Issue', NOT_AS_DESCRIBED: 'Not As Described', CHANGED_MIND: 'Changed Mind', ALLERGIC_REACTION: 'Allergic Reaction' };
+  return { apiId: item.id, id: item.reference, customer: item.customerName, email: item.customerEmail, order: item.orderNumber, item: item.itemName, variant: item.itemVariant, reason: reasonLabels[item.reason] || 'Damaged', status: statusLabels[item.status] || 'Open', age: 'recently', created: new Date(item.createdAt).toLocaleString(), amount: item.refundAmount ? `$${item.refundAmount}` : '$36.00', resolution: item.resolution, note: item.notes?.[0]?.body || 'No notes have been added yet.', avatar: item.customerName.split(' ').map((part: string) => part[0]).join('').slice(0, 2).toUpperCase() };
+}
 
 function Icon({ name, size = 18 }: { name: string; size?: number }) {
   const props = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
@@ -51,6 +57,14 @@ export default function Home() {
   const [note, setNote] = useState('');
   const [localRequests, setLocalRequests] = useState(requests);
 
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (query) params.set('q', query);
+    if (status !== 'All statuses') params.set('status', status);
+    if (reason !== 'All reasons') params.set('reason', reason);
+    fetch(`/api/requests?${params.toString()}`).then((response) => response.ok ? response.json() : Promise.reject()).then((data) => setLocalRequests(data.items.map(apiRequestToView))).catch(() => undefined);
+  }, [query, status, reason]);
+
   const filtered = useMemo(() => localRequests.filter((r) => {
     const q = query.toLowerCase();
     const matchesQ = !q || [r.id, r.customer, r.email, r.order, r.item].some((v) => v.toLowerCase().includes(q));
@@ -64,10 +78,11 @@ export default function Home() {
     const legal: Record<Status, Status[]> = { Open: ['In review'], 'In review': ['Approved', 'Rejected'], Approved: ['Completed'], Rejected: [], Completed: [] };
     if (!legal[selected.status].includes(next)) { setToast(`That transition is not allowed from ${selected.status}.`); return; }
     if (next === 'Approved' && !selected.resolution) { setToast('Choose a resolution before approving this request.'); return; }
-    setLocalRequests((items) => items.map((item) => item.id === selected.id ? { ...item, status: next } : item));
-    setToast(`Request moved to ${next}.`);
+    const statusValues: Record<Status, string> = { Open: 'OPEN', 'In review': 'IN_REVIEW', Approved: 'APPROVED', Rejected: 'REJECTED', Completed: 'COMPLETED' };
+    if (selected.apiId) fetch(`/api/requests/${selected.apiId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: statusValues[next], resolution: selected.resolution || (next === 'Approved' ? 'REPLACEMENT' : undefined) }) }).then((response) => { if (!response.ok) throw new Error(); setLocalRequests((items) => items.map((item) => item.id === selected.id ? { ...item, status: next } : item)); setToast(`Request moved to ${next}.`); }).catch(() => setToast('The server refused that transition.'));
+    else { setLocalRequests((items) => items.map((item) => item.id === selected.id ? { ...item, status: next } : item)); setToast(`Request moved to ${next}.`); }
   }
-  function addNote() { if (!note.trim()) return; setNote(''); setToast('Note added to the request timeline.'); }
+  function addNote() { if (!note.trim()) return; const body = note.trim(); if (selected?.apiId) fetch(`/api/requests/${selected.apiId}/notes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }) }).then((response) => { if (!response.ok) throw new Error(); setNote(''); setToast('Note added to the request timeline.'); }).catch(() => setToast('The server could not add that note.')); else { setNote(''); setToast('Note added to the request timeline.'); } }
 
   return <main className="min-h-screen bg-[var(--paper)]">
     <aside className="fixed inset-y-0 left-0 hidden w-[236px] border-r hairline bg-[var(--surface)] lg:flex lg:flex-col">
