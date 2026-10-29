@@ -9,8 +9,10 @@
     "lint": "next lint",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev --name init",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "postinstall": "prisma generate"
   },
+  "engines": { "node": ">=20.0.0" },
   "dependencies": {
     "@prisma/client": "^6.17.0",
     "next": "^15.5.0",
